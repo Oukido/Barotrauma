@@ -158,7 +158,7 @@ namespace Barotrauma.Items.Components
             }
             if (rechargeSpeedSlider != null)
             {
-                rechargeSpeedSlider.Step = UseStep ? 0.1f : 0.0f;
+                rechargeSpeedSlider.Step = UseStep ? 0.1f : 0.01f;
                 rechargeSpeedSlider.Enabled = rechargeSpeedLockTimer <= 0.0f;
             }
         }
@@ -198,18 +198,20 @@ namespace Barotrauma.Items.Components
 
         public void ClientEventWrite(IWriteMessage msg, NetEntityEvent.IData extraData)
         {
-            msg.WriteRangedInteger((int)(rechargeSpeed / MaxRechargeSpeed * 10), 0, 10);
+            msg.Write(UseStep);
+            msg.WriteRangedSingle(rechargeSpeed / MaxRechargeSpeed * 100.0f, 0.0f, 100.0f, 8);
         }
 
         public void ClientEventRead(IReadMessage msg, float sendingTime)
         {
             if (correctionTimer > 0.0f)
             {
-                StartDelayedCorrection(msg.ExtractBits(4 + 8), sendingTime);
+                StartDelayedCorrection(msg.ExtractBits(1 + 8 + 8), sendingTime);
                 return;
             }
 
-            float rechargeRate = msg.ReadRangedInteger(0, 10) / 10.0f;
+            UseStep = msg.ReadBoolean();
+            float rechargeRate = msg.ReadRangedSingle(0.0f, 100.0f, 8) / 100.0f;
             RechargeSpeed = rechargeRate * MaxRechargeSpeed;
 #if CLIENT
             if (rechargeSpeedSlider != null)
