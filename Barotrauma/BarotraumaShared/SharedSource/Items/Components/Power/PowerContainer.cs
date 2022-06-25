@@ -20,6 +20,9 @@ namespace Barotrauma.Items.Components
         private float rechargeSpeed;
         private float lastSentCharge;
 
+        //locks slider interaction if speed is set via connection
+        private float rechargeSpeedLockTimer;
+
         //charge indicator description
         protected Vector2 indicatorPosition, indicatorSize;
 
@@ -73,10 +76,10 @@ namespace Barotrauma.Items.Components
         public float Charge
         {
             get { return charge; }
-            set 
+            set
             {
                 if (!MathUtils.IsValid(value)) return;
-                charge = MathHelper.Clamp(value, 0.0f, capacity); 
+                charge = MathHelper.Clamp(value, 0.0f, capacity);
 
                 //send a network event if the charge has changed by more than 5%
                 if (Math.Abs(charge - lastSentCharge) / capacity > 0.05f)
@@ -90,13 +93,15 @@ namespace Barotrauma.Items.Components
         }
 
         public float ChargePercentage => MathUtils.Percentage(Charge, Capacity);
-        
+
         [Editable, Serialize(10.0f, IsPropertySaveable.Yes, description: "How fast the device can be recharged. For example, a recharge speed of 100 kW and a capacity of 1000 kW*min would mean it takes 10 minutes to fully charge the device.")]
         public float MaxRechargeSpeed
         {
             get { return maxRechargeSpeed; }
             set { maxRechargeSpeed = Math.Max(value, 1.0f); }
         }
+        [Editable, Serialize(true, IsPropertySaveable.Yes, description: "When enabled, the component uses stepped increments for recharge speed.", alwaysUseInstanceValues: true)]
+        public bool UseStep { get; set; }
 
         [Editable, Serialize(10.0f, IsPropertySaveable.Yes, description: "The current recharge speed of the device.")]
         public float RechargeSpeed
@@ -104,9 +109,12 @@ namespace Barotrauma.Items.Components
             get { return rechargeSpeed; }
             set
             {
-                if (!MathUtils.IsValid(value)) return;              
+                if (!MathUtils.IsValid(value)) return;
                 rechargeSpeed = MathHelper.Clamp(value, 0.0f, maxRechargeSpeed);
-                rechargeSpeed = MathUtils.RoundTowardsClosest(rechargeSpeed, Math.Max(maxRechargeSpeed * 0.1f, 1.0f));
+                if (UseStep)
+                {
+                    rechargeSpeed = MathUtils.RoundTowardsClosest(rechargeSpeed, Math.Max(maxRechargeSpeed * 0.1f, 1.0f));
+                }
                 if (isRunning)
                 {
                     HasBeenTuned = true;
@@ -149,17 +157,19 @@ namespace Barotrauma.Items.Components
             return picker != null;
         }
 
-        public override void Update(float deltaTime, Camera cam) 
+        public override void Update(float deltaTime, Camera cam)
         {
-            if (item.Connections == null) 
+            rechargeSpeedLockTimer -= deltaTime;
+
+            if (item.Connections == null)
             {
                 IsActive = false;
-                return; 
+                return;
             }
 
             isRunning = true;
             float chargeRatio = charge / capacity;
-            
+
             if (chargeRatio > 0.0f)
             {
                 ApplyStatusEffects(ActionType.OnActive, deltaTime, null);
@@ -270,7 +280,7 @@ namespace Barotrauma.Items.Components
                 CurrPowerOutput = MathHelper.Clamp((load - power) / minMaxPower.Max, 0, 1) * MinMaxPowerOut(connection, load).Max;
                 return CurrPowerOutput;
             }
-            return 0.0f;            
+            return 0.0f;
         }
 
         /// <summary>
@@ -364,6 +374,7 @@ namespace Barotrauma.Items.Components
 
                     float rechargeRate = MathHelper.Clamp(tempSpeed / 100.0f, 0.0f, 1.0f);
                     RechargeSpeed = rechargeRate * MaxRechargeSpeed;
+                    rechargeSpeedLockTimer = 0.1f;
 #if CLIENT
                     if (rechargeSpeedSlider != null)
                     {

@@ -9,6 +9,7 @@ namespace Barotrauma.Items.Components
     {
         private GUIProgressBar chargeIndicator;
         private GUIScrollBar rechargeSpeedSlider;
+        private GUIButton stepSwitch;
 
         [Serialize(0.0f, IsPropertySaveable.Yes)]
         public float RechargeWarningIndicatorLow { get; set; }
@@ -45,8 +46,8 @@ namespace Barotrauma.Items.Components
             };
             if (rechargeText.TextSize.X > rechargeText.Rect.Width) { rechargeText.Font = GUIStyle.SmallFont; }
 
-            var rechargeSliderContainer = new GUIFrame(new RectTransform(new Vector2(0.9f, 0.4f), upperArea.RectTransform, Anchor.BottomCenter));
-            
+            var rechargeSliderContainer = new GUIFrame(new RectTransform(new Vector2(0.8f, 0.4f), upperArea.RectTransform, Anchor.BottomLeft));
+
             if (RechargeWarningIndicatorLow > 0.0f || RechargeWarningIndicatorHigh > 0.0f)
             {
                 var rechargeSliderFill = new GUICustomComponent(new RectTransform(new Vector2(0.95f, 0.9f), rechargeSliderContainer.RectTransform, Anchor.Center), (SpriteBatch sb, GUICustomComponent c) =>
@@ -64,7 +65,7 @@ namespace Barotrauma.Items.Components
                 });
             }
 
-            rechargeSpeedSlider = new GUIScrollBar(new RectTransform(Vector2.One, rechargeSliderContainer.RectTransform, Anchor.Center), 
+            rechargeSpeedSlider = new GUIScrollBar(new RectTransform(Vector2.One, rechargeSliderContainer.RectTransform, Anchor.Center),
                 barSize: 0.15f, style: "DeviceSliderSeeThrough")
             {
                 Step = 0.1f,
@@ -83,7 +84,30 @@ namespace Barotrauma.Items.Components
                 }
             };
             rechargeSpeedSlider.Bar.RectTransform.MaxSize = new Point(rechargeSpeedSlider.Bar.Rect.Height);
-            
+
+            stepSwitch = new GUIButton(new RectTransform(new Vector2(0.2f, 0.4f), upperArea.RectTransform, Anchor.BottomRight), string.Empty, style: "SwitchHorizontal")
+            {
+                Selected = UseStep,
+                Enabled = true,
+                ClickSound = GUISoundType.UISwitch,
+                OnClicked = (button, data) =>
+                {
+                    button.Selected = !button.Selected;
+                    UseStep = button.Selected;
+                    if (UseStep)
+                    {
+                        //reassign value so it can snap when it is not autocontrolled
+                        RechargeSpeed = RechargeSpeed;
+                    }
+                    if (GameMain.Client != null)
+                    {
+                        item.CreateClientEvent(this);
+                        correctionTimer = CorrectionDelay;
+                    }
+                    return true;
+                }
+            };
+
             // lower area --------------------------
 
             var chargeTextContainer = new GUIFrame(new RectTransform(new Vector2(1, 0.4f), lowerArea.RectTransform), style: null);
@@ -93,7 +117,7 @@ namespace Barotrauma.Items.Components
                 ToolTip = TextManager.Get("PowerTransferTipPower")
             };
             LocalizedString kWmin = TextManager.Get("kilowattminute");
-            var chargeText = new GUITextBlock(new RectTransform(new Vector2(0.6f, 1), chargeTextContainer.RectTransform, Anchor.CenterRight), 
+            var chargeText = new GUITextBlock(new RectTransform(new Vector2(0.6f, 1), chargeTextContainer.RectTransform, Anchor.CenterRight),
                 "", textColor: GUIStyle.TextColorNormal, font: GUIStyle.Font, textAlignment: Alignment.CenterRight)
             {
                 TextGetter = () => $"{(int)MathF.Round(charge)}/{(int)capacity} {kWmin} ({(int)MathF.Round(MathUtils.Percentage(charge, capacity))} %)"
@@ -119,14 +143,23 @@ namespace Barotrauma.Items.Components
             {
                 rechargeSpeedSlider.BarScroll = rechargeSpeed / MaxRechargeSpeed;
             }
+            if (stepSwitch != null)
+            {
+                stepSwitch.Selected = UseStep;
+            }
         }
-        
+
         public override void UpdateHUD(Character character, float deltaTime, Camera cam)
         {
             if (chargeIndicator != null)
             {
                 float chargeRatio = charge / capacity;
                 chargeIndicator.Color = ToolBox.GradientLerp(chargeRatio, Color.Red, Color.Orange, Color.Green);
+            }
+            if (rechargeSpeedSlider != null)
+            {
+                rechargeSpeedSlider.Step = UseStep ? 0.1f : 0.0f;
+                rechargeSpeedSlider.Enabled = rechargeSpeedLockTimer <= 0.0f;
             }
         }
 
@@ -154,7 +187,7 @@ namespace Barotrauma.Items.Components
                 {
                     GUI.DrawRectangle(spriteBatch,
                         new Vector2(item.DrawPosition.X, -item.DrawPosition.Y) + indicatorPos,
-                        new Vector2((indicatorSize.X * item.Scale) * chargeRatio, indicatorSize.Y * item.Scale), indicatorColor, true, 
+                        new Vector2((indicatorSize.X * item.Scale) * chargeRatio, indicatorSize.Y * item.Scale), indicatorColor, true,
                         depth: item.SpriteDepth - 0.00001f);
                 }
             }
